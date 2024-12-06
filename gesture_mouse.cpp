@@ -134,6 +134,7 @@ int main() {
         // Display the result
         // cv::imshow("Frame", frame);
         cv::imshow("Red Mask", mask);
+        cv::imshow("Detected Caps", black_screen);
 
         // Exit on 'q' key press
         if (cv::waitKey(30) == 'q') break;
