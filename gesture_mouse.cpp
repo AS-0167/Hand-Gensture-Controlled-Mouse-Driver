@@ -57,6 +57,10 @@ int main() {
         return -1;
     }
 
+    int clks_ctr = 0;
+    int r_clk_cltr = 0;
+    int l_clk_cltr = 0;
+    int max_frame_skips = 5;
     // Setup the virtual input device
     int uinput_fd = setup_uinput_device();
 
@@ -121,42 +125,55 @@ int main() {
             }
         }
         if (centers.size() == 3 && !rc) {
-            emit(uinput_fd, EV_KEY, BTN_RIGHT, 1); // Key press
-            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
-            emit(uinput_fd, EV_KEY, BTN_RIGHT, 0); // Key release
-            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
-            lc = false;
-            rc = true;
-            std::cout << "Right click !\n";
+            r_clk_cltr++;
+            if (r_clk_cltr > max_frame_skips) {
+                emit(uinput_fd, EV_KEY, BTN_RIGHT, 1); // Key press
+                emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+                emit(uinput_fd, EV_KEY, BTN_RIGHT, 0); // Key release
+                emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+                lc = false;
+                rc = true;
+                std::cout << "Right click !\n";
+            }
         } else if (centers.size() == 2 && !lc) {
-            emit(uinput_fd, EV_KEY, BTN_LEFT, 1); // Key press
-            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
-            emit(uinput_fd, EV_KEY, BTN_LEFT, 0); // Key release
-            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
-            rc = false;
-            lc = true;
-            std::cout << "Left click !\n";
+            l_clk_cltr++;
+            if (l_clk_cltr > max_frame_skips) {
+                emit(uinput_fd, EV_KEY, BTN_LEFT, 1); // Key press
+                emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+                emit(uinput_fd, EV_KEY, BTN_LEFT, 0); // Key release
+                emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+                rc = false;
+                lc = true;
+                std::cout << "Left click !\n";
+            }
         } else if (centers.size() == 1) {
-            rc = false, lc = false;
-            auto center = centers[0];
-            if (no_cap) {
-                prev_center = center;
-                no_cap = false;
-            }
-
-            // Update the direction and global position
-            if (!first_frame) {
-                int dx = center.x - prev_center.x;  // x-coordinate difference
-                int dy = center.y - prev_center.y;  // y-coordinate difference
-
-                // Emit mouse events for relative movement
-                emit(uinput_fd, EV_REL, REL_X, (dx > 0) ? Direction::RIGHT * abs(dx): Direction::LEFT * abs(dx));
-                emit(uinput_fd, EV_REL, REL_Y, (dy > 0) ? Direction::DOWN * abs(dy): Direction::UP * abs(dy));
-                emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
+            clks_ctr++;
+            if (lc || rc) {
+                if (clks_ctr > max_frame_skips) {
+                    rc = false, lc = false;
+                }
             } else {
-                first_frame = false;
+                auto center = centers[0];
+                if (no_cap) {
+                    prev_center = center;
+                    no_cap = false;
+                }
+
+                // Update the direction and global position
+                if (!first_frame) {
+                    int dx = center.x - prev_center.x;  // x-coordinate difference
+                    int dy = center.y - prev_center.y;  // y-coordinate difference
+
+                    // Emit mouse events for relative movement
+                    emit(uinput_fd, EV_REL, REL_X, (dx > 0) ? Direction::RIGHT * abs(dx): Direction::LEFT * abs(dx));
+                    emit(uinput_fd, EV_REL, REL_Y, (dy > 0) ? Direction::DOWN * abs(dy): Direction::UP * abs(dy));
+                    emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
+                } else {
+                    first_frame = false;
+                }
+                prev_center = center;
+                clks_ctr = 0; 
             }
-            prev_center = center;   
         }
 
         if (count == 0) {
