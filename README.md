@@ -25,12 +25,15 @@ This project implements a gesture-controlled mouse driver using computer vision,
 
 ### Usage 🚀
 - Clone the repository:
+  
 ```git clone https://github.com/your-username/red-cap-gesture-mouse.git```
 
 - Build the project:
+  
 ```sudo g++ gesture_mouse.cpp -o gesture_mouse -I/usr/include/opencv4 -L/usr/lib/x86_64-linux-gnu -lopencv_core -lopencv_imgproc -lopencv_highgui -lopencv_videoio```
 
 - Run the program:
+  
 ```./gesture_mouse```
 
 ### Customization ⚙️
