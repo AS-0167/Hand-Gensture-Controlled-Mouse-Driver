@@ -8,10 +8,9 @@
 #include <linux/uinput.h>
 
 // Global Enum for direction
-enum Direction { LEFT = 1, RIGHT = -1, UP = 1, DOWN = -1 };
+enum Direction { LEFT = -1, RIGHT = 1, UP = -1, DOWN = 1 };
 
 // Global position variable (initialized to (0, 0))
-cv::Point p(0, 0);  // This will store the global position of the cap
 
 // Function to emit virtual input events
 void emit(int fd, int type, int code, int value) {
@@ -63,6 +62,8 @@ int main() {
 
     cv::Point prev_center(0, 0); // Previous center position (initialized to (0, 0))
     bool first_frame = true;  // Flag to check if it's the first frame
+    bool no_cap = false;
+    bool rc, lc = false;
     while (true) {
         cv::Mat frame, hsv, mask, result;
         cap >> frame;  // Capture frame from the camera
@@ -94,20 +95,54 @@ int main() {
 
         // Find contours of the red regions
         std::vector<std::vector<cv::Point>> contours;
+        std::vector<cv::Point> centers;
         cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
         cv::Mat black_screen = cv::Mat::zeros(frame.size(), CV_8UC3);
 
-        if (!contours.empty()) {
-            // Assume the largest contour corresponds to the cap
-            auto max_contour = *std::max_element(contours.begin(), contours.end(),
-                                                 [](const std::vector<cv::Point>& c1, const std::vector<cv::Point>& c2) {
-                                                     return cv::contourArea(c1) < cv::contourArea(c2);
-                                                 });
+        
+        int count = 0;
+        for (const auto& contour : contours) {
+            // Filter out small contours
+            if (cv::contourArea(contour) > 500) {
+                // Calculate the bounding box and center
+                cv::Rect bounding_box = cv::boundingRect(contour);
+                cv::Point center(bounding_box.x + bounding_box.width / 2, bounding_box.y + bounding_box.height / 2);
 
-            // Calculate the bounding box and center
-            cv::Rect bounding_box = cv::boundingRect(max_contour);
-            cv::Point center(bounding_box.x + bounding_box.width / 2, bounding_box.y + bounding_box.height / 2);
+                // Store the center of each detected cap
+                centers.push_back(center);
+
+                // Draw the bounding box and center point
+                cv::rectangle(black_screen, bounding_box, cv::Scalar(0, 255, 0), 2);
+                cv::circle(black_screen, center, 5, cv::Scalar(255, 0, 0), -1);
+
+                // Label the center with its number
+                cv::putText(black_screen, "Cap " + std::to_string(++count), center + cv::Point(10, -10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
+            }
+        }
+        if (centers.size() == 3 && !rc) {
+            emit(uinput_fd, EV_KEY, BTN_RIGHT, 1); // Key press
+            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+            emit(uinput_fd, EV_KEY, BTN_RIGHT, 0); // Key release
+            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+            lc = false;
+            rc = true;
+            std::cout << "Right click !\n";
+        } else if (centers.size() == 2 && !lc) {
+            emit(uinput_fd, EV_KEY, BTN_LEFT, 1); // Key press
+            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+            emit(uinput_fd, EV_KEY, BTN_LEFT, 0); // Key release
+            emit(uinput_fd, EV_SYN, SYN_REPORT, 0); // Synchronize
+            rc = false;
+            lc = true;
+            std::cout << "Left click !\n";
+        } else if (centers.size() == 1) {
+            rc = false, lc = false;
+            auto center = centers[0];
+            if (no_cap) {
+                prev_center = center;
+                no_cap = false;
+            }
 
             // Update the direction and global position
             if (!first_frame) {
@@ -115,20 +150,26 @@ int main() {
                 int dy = center.y - prev_center.y;  // y-coordinate difference
 
                 // Emit mouse events for relative movement
-                emit(uinput_fd, EV_REL, REL_X, dx);
-                emit(uinput_fd, EV_REL, REL_Y, dy);
+                emit(uinput_fd, EV_REL, REL_X, (dx > 0) ? Direction::RIGHT * abs(dx): Direction::LEFT * abs(dx));
+                emit(uinput_fd, EV_REL, REL_Y, (dy > 0) ? Direction::DOWN * abs(dy): Direction::UP * abs(dy));
                 emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
             } else {
                 first_frame = false;
             }
+            prev_center = center;   
+        }
 
-            prev_center = center;
-
-            // Draw the bounding box and center point
-            cv::rectangle(black_screen, bounding_box, cv::Scalar(0, 255, 0), 2);
-            cv::circle(black_screen, center, 5, cv::Scalar(255, 0, 0), -1);
-            // cv::circle(mask, center, 5, cv::Scalar(255, 0, 0), -1);
-            
+        if (count == 0) {
+            std::cout << "no cap detected !\n";
+            no_cap = true;
+        } else if (count == 1){
+            std::cout << "1 cap detected !\n";
+        } else if (count == 2) {
+            std::cout << "2 caps detected !\n";
+        } else if (count == 3) {
+            std::cout << "3 caps detected !\n";
+        } else {
+            std::cout << "more than 3 caps detected !\n";
         }
 
         // Display the result
